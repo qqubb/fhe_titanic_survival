@@ -120,25 +120,92 @@ def concrete_predict_survival(passenger_class, is_male, age, company, fare, emba
     pred = concrete_clf.predict_proba(df)[0]
     return {"Perishes": float(pred[0]), "Survives": float(pred[1])}
 
-demo = gr.Interface(
-    concrete_predict_survival,
-    [
-        gr.Dropdown(["first", "second", "third"], type="index"),
-        "checkbox",
-        gr.Slider(0, 80, value=25),
-        gr.CheckboxGroup(["Sibling", "Child"], label="Travelling with (select all)"),
-        gr.Number(value=20),
-        gr.Radio(["S", "C", "Q"], type="index"),
-    ],
-    "label",
-    examples=[
-        ["first", True, 30, [], 50, "S"],
-        ["second", False, 40, ["Sibling", "Child"], 10, "Q"],
-        ["third", True, 30, ["Child"], 20, "S"],
-    ],
-    # interpretation="default",
-    live=True,
-)
+# def key_gen_fn(user_symptoms: List[str]) -> Dict:
+#     """
+#     Generate keys for a given user.
 
-if __name__ == "__main__":
-    demo.launch()
+#     Args:
+#         user_symptoms (List[str]): The vector symptoms provided by the user.
+
+#     Returns:
+#         dict: A dictionary containing the generated keys and related information.
+
+#     """
+#     clean_directory()
+
+#     if is_none(user_symptoms):
+#         print("Error: Please submit your symptoms or select a default disease.")
+#         return {
+#             error_box2: gr.update(visible=True, value="⚠️ Please submit your symptoms first."),
+#         }
+
+#     # Generate a random user ID
+#     user_id = np.random.randint(0, 2**32)
+#     print(f"Your user ID is: {user_id}....")
+
+#     client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
+#     client.load()
+
+#     # Creates the private and evaluation keys on the client side
+#     client.generate_private_and_evaluation_keys()
+
+#     # Get the serialized evaluation keys
+#     serialized_evaluation_keys = client.get_serialized_evaluation_keys()
+#     assert isinstance(serialized_evaluation_keys, bytes)
+
+#     # Save the evaluation key
+#     evaluation_key_path = KEYS_DIR / f"{user_id}/evaluation_key"
+#     with evaluation_key_path.open("wb") as f:
+#         f.write(serialized_evaluation_keys)
+
+#     serialized_evaluation_keys_shorten_hex = serialized_evaluation_keys.hex()[:INPUT_BROWSER_LIMIT]
+
+#     return {
+#         error_box2: gr.update(visible=False),
+#         key_box: gr.update(visible=True, value=serialized_evaluation_keys_shorten_hex),
+#         user_id_box: gr.update(visible=True, value=user_id),
+#         key_len_box: gr.update(
+#             visible=True, value=f"{len(serialized_evaluation_keys) / (10**6):.2f} MB"
+#         ),
+#     }
+
+
+# demo = gr.Interface(
+#     fn=concrete_predict_survival,
+#     inputs = [
+#         gr.Dropdown(["first", "second", "third"], type="index"),
+#         "checkbox",
+#         gr.Slider(0, 80, value=25),
+#         gr.CheckboxGroup(["Sibling", "Child"], label="Travelling with (select all)"),
+#         gr.Number(value=20),
+#         gr.Radio(["S", "C", "Q"], type="index"),
+#     ],
+#     outputs = "label",
+#     examples=[
+#         ["first", True, 30, [], 50, "S"],
+#         ["second", False, 40, ["Sibling", "Child"], 10, "Q"],
+#         ["third", True, 30, ["Child"], 20, "S"],
+#     ],
+#     interpretation="default",
+#     live=True,
+# )
+
+# if __name__ == "__main__":
+#     demo.launch()
+
+
+with gr.Blocks() as demo:
+    with gr.Row():
+        inp = [
+                gr.Dropdown(["first", "second", "third"], type="index"), 
+                gr.Checkbox(label="is_male"),
+                gr.Slider(0, 80, value=25),
+                gr.CheckboxGroup(["Sibling", "Child"], label="Travelling with (select all)"),
+                gr.Number(value=20),
+                gr.Radio(["S", "C", "Q"], type="index"),
+            ]
+        out = gr.Label()
+    btn = gr.Button("Run")
+    btn.click(fn=concrete_predict_survival, inputs=inp, outputs=out)
+
+demo.launch()
