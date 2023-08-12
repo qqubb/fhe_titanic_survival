@@ -100,11 +100,10 @@ def predict_survival(passenger_class, is_male, age, company, fare, embark_point)
     pred = clf.predict_proba(df)[0]
     return {"Perishes": float(pred[0]), "Survives": float(pred[1])}
 
-def concrete_predict_survival(passenger_class, is_male, age, company, fare, embark_point):
+def collect_input(passenger_class, is_male, age, company, fare, embark_point):
     if passenger_class is None or embark_point is None:
         return None
-    df = pd.DataFrame.from_dict(
-        {
+    input_dict = {
             "Pclass": [passenger_class + 1],
             "Sex": [0 if is_male else 1],
             "Age": [age],
@@ -114,7 +113,10 @@ def concrete_predict_survival(passenger_class, is_male, age, company, fare, emba
                 (1 if "Sibling" in company else 0) + (2 if "Child" in company else 0)
             ]
         }
-    )
+    return input_dict
+
+def concrete_predict_survival(input_dict):
+    df = pd.DataFrame.from_dict(input_dict)
     df = encode_age(df)
     df = encode_fare(df)
     pred = concrete_clf.predict_proba(df)[0]
@@ -197,15 +199,19 @@ def concrete_predict_survival(passenger_class, is_male, age, company, fare, emba
 with gr.Blocks() as demo:
     with gr.Row():
         inp = [
-                gr.Dropdown(["first", "second", "third"], type="index"), 
+                gr.Dropdown(["first", "second", "third"], type="index"),
                 gr.Checkbox(label="is_male"),
                 gr.Slider(0, 80, value=25),
                 gr.CheckboxGroup(["Sibling", "Child"], label="Travelling with (select all)"),
                 gr.Number(value=20),
                 gr.Radio(["S", "C", "Q"], type="index"),
             ]
-        out = gr.Label()
+        out = gr.JSON()
     btn = gr.Button("Run")
-    btn.click(fn=concrete_predict_survival, inputs=inp, outputs=out)
+    btn.click(fn=collect_input, inputs=inp, outputs=out)
+
+    with gr.Row():
+        btn = gr.Button("Run")
+        btn.click(fn=concrete_predict_survival, inputs=out, outputs=gr.Label())
 
 demo.launch()
