@@ -1,12 +1,37 @@
 import os
 
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 from concrete.ml.sklearn import RandomForestClassifier as ConcreteRandomForestClassifier
 
 import gradio as gr
+
+from utils import (
+    CLIENT_DIR,
+    CURRENT_DIR,
+    DEPLOYMENT_DIR,
+    INPUT_BROWSER_LIMIT,
+    KEYS_DIR,
+    SERVER_URL,
+    TARGET_COLUMNS,
+    TRAINING_FILENAME,
+    clean_directory,
+    load_data,
+    pretty_print,
+)
+
+import requests
+import subprocess
+import time
+from typing import Dict, List, Tuple
+
+from concrete.ml.deployment import FHEModelClient
+
+subprocess.Popen(["uvicorn", "server:app"], cwd=CURRENT_DIR)
+time.sleep(3)
 
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data = pd.read_csv(os.path.join(current_dir, "files/titanic.csv"))
@@ -113,7 +138,15 @@ def collect_input(passenger_class, is_male, age, company, fare, embark_point):
                 (1 if "Sibling" in company else 0) + (2 if "Child" in company else 0)
             ]
         }
+    print(input_dict)
     return input_dict
+
+def clear_predict_survival(input_dict):
+    df = pd.DataFrame.from_dict(input_dict)
+    df = encode_age(df)
+    df = encode_fare(df)
+    pred = clf.predict_proba(df)[0]
+    return {"Perishes": float(pred[0]), "Survives": float(pred[1])}
 
 def concrete_predict_survival(input_dict):
     df = pd.DataFrame.from_dict(input_dict)
@@ -122,81 +155,57 @@ def concrete_predict_survival(input_dict):
     pred = concrete_clf.predict_proba(df)[0]
     return {"Perishes": float(pred[0]), "Survives": float(pred[1])}
 
-# def key_gen_fn(user_symptoms: List[str]) -> Dict:
-#     """
-#     Generate keys for a given user.
+print("\nclear_test    ", clear_predict_survival({'Pclass': [1], 'Sex': [1], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}))
 
-#     Args:
-#         user_symptoms (List[str]): The vector symptoms provided by the user.
-
-#     Returns:
-#         dict: A dictionary containing the generated keys and related information.
-
-#     """
-#     clean_directory()
-
-#     if is_none(user_symptoms):
-#         print("Error: Please submit your symptoms or select a default disease.")
-#         return {
-#             error_box2: gr.update(visible=True, value="⚠️ Please submit your symptoms first."),
-#         }
-
-#     # Generate a random user ID
-#     user_id = np.random.randint(0, 2**32)
-#     print(f"Your user ID is: {user_id}....")
-
-#     client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
-#     client.load()
-
-#     # Creates the private and evaluation keys on the client side
-#     client.generate_private_and_evaluation_keys()
-
-#     # Get the serialized evaluation keys
-#     serialized_evaluation_keys = client.get_serialized_evaluation_keys()
-#     assert isinstance(serialized_evaluation_keys, bytes)
-
-#     # Save the evaluation key
-#     evaluation_key_path = KEYS_DIR / f"{user_id}/evaluation_key"
-#     with evaluation_key_path.open("wb") as f:
-#         f.write(serialized_evaluation_keys)
-
-#     serialized_evaluation_keys_shorten_hex = serialized_evaluation_keys.hex()[:INPUT_BROWSER_LIMIT]
-
-#     return {
-#         error_box2: gr.update(visible=False),
-#         key_box: gr.update(visible=True, value=serialized_evaluation_keys_shorten_hex),
-#         user_id_box: gr.update(visible=True, value=user_id),
-#         key_len_box: gr.update(
-#             visible=True, value=f"{len(serialized_evaluation_keys) / (10**6):.2f} MB"
-#         ),
-#     }
+print("encrypted_test", concrete_predict_survival({'Pclass': [1], 'Sex': [1], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}),"\n")
 
 
-# demo = gr.Interface(
-#     fn=concrete_predict_survival,
-#     inputs = [
-#         gr.Dropdown(["first", "second", "third"], type="index"),
-#         "checkbox",
-#         gr.Slider(0, 80, value=25),
-#         gr.CheckboxGroup(["Sibling", "Child"], label="Travelling with (select all)"),
-#         gr.Number(value=20),
-#         gr.Radio(["S", "C", "Q"], type="index"),
-#     ],
-#     outputs = "label",
-#     examples=[
-#         ["first", True, 30, [], 50, "S"],
-#         ["second", False, 40, ["Sibling", "Child"], 10, "Q"],
-#         ["third", True, 30, ["Child"], 20, "S"],
-#     ],
-#     interpretation="default",
-#     live=True,
-# )
+def key_gen_fn() -> Dict:
+    """
+    Generate keys for a given user.
 
-# if __name__ == "__main__":
-#     demo.launch()
+    Args:
+        
+    Returns:
+        dict: A dictionary containing the generated keys and related information.
+
+    """
+    clean_directory()
+
+    # Generate a random user ID
+    user_id = np.random.randint(0, 2**32)
+    print(f"Your user ID is: {user_id}....")
+
+    client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
+    client.load()
+
+    # Creates the private and evaluation keys on the client side
+    client.generate_private_and_evaluation_keys()
+
+    # Get the serialized evaluation keys
+    serialized_evaluation_keys = client.get_serialized_evaluation_keys()
+    assert isinstance(serialized_evaluation_keys, bytes)
+
+    # Save the evaluation key
+    evaluation_key_path = KEYS_DIR / f"{user_id}/evaluation_key"
+    with evaluation_key_path.open("wb") as f:
+        f.write(serialized_evaluation_keys)
+
+    serialized_evaluation_keys_shorten_hex = serialized_evaluation_keys.hex()[:INPUT_BROWSER_LIMIT]
+
+    return {
+        error_box2: gr.update(visible=False),
+        key_box: gr.update(visible=True, value=serialized_evaluation_keys_shorten_hex),
+        user_id_box: gr.update(visible=True, value=user_id),
+        key_len_box: gr.update(
+            visible=True, value=f"{len(serialized_evaluation_keys) / (10**6):.2f} MB"
+        ),
+    }
 
 
 with gr.Blocks() as demo:
+
+    # Step 1.1: Provide inputs
     with gr.Row():
         inp = [
                 gr.Dropdown(["first", "second", "third"], type="index"),
@@ -209,6 +218,26 @@ with gr.Blocks() as demo:
         out = gr.JSON()
     btn = gr.Button("Run")
     btn.click(fn=collect_input, inputs=inp, outputs=out)
+
+    # Step 2.1: Key generation
+
+    gen_key_btn = gr.Button("Generate the evaluation key")
+    error_box2 = gr.Textbox(label="Error ❌", visible=False)
+    user_id_box = gr.Textbox(label="User ID:", visible=True)
+    key_len_box = gr.Textbox(label="Evaluation Key Size:", visible=False)
+    key_box = gr.Textbox(label="Evaluation key (truncated):", max_lines=3, visible=False)
+
+    gen_key_btn.click(
+        key_gen_fn,
+        inputs=None,
+        outputs=[
+            key_box,
+            user_id_box,
+            key_len_box,
+            error_box2,
+        ],
+    )
+
 
     with gr.Row():
         btn = gr.Button("Run")
