@@ -36,6 +36,17 @@ time.sleep(3)
 current_dir = os.path.dirname(os.path.realpath(__file__))
 data = pd.read_csv(os.path.join(current_dir, "files/titanic.csv"))
 
+def is_none(obj) -> bool:
+    """
+    Check if the object is None.
+
+    Args:
+        obj (any): The input to be checked.
+
+    Returns:
+        bool: True if the object is None or empty, False otherwise.
+    """
+    return obj is None or (obj is not None and len(obj) < 1)
 
 def encode_age(df):
     df.Age = df.Age.fillna(-0.5)
@@ -202,6 +213,43 @@ def key_gen_fn() -> Dict:
         ),
     }
 
+def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
+    """
+    """
+
+    if is_none(user_id) or is_none(user_inputs):
+        print("Error in encryption step: Provide your inputs and generate the evaluation keys.")
+        return {
+            error_box3: gr.update(
+                visible=True,
+                value="⚠️ Please ensure that your inputs have been submitted and "
+                "that you have generated the evaluation key.",
+            )
+        }
+
+    # Retrieve the client API
+    client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
+    client.load()
+
+    # user_inputs = np.fromstring(user_symptoms[2:-2], dtype=int, sep=".").reshape(1, -1)
+    # quant_user_symptoms = client.model.quantize_input(user_symptoms)
+
+    encrypted_quantized_user_symptoms = client.quantize_encrypt_serialize(user_inputs)
+    assert isinstance(encrypted_quantized_user_inputs, bytes)
+    encrypted_input_path = KEYS_DIR / f"{user_id}/encrypted_input"
+
+    with encrypted_input_path.open("wb") as f:
+        f.write(encrypted_quantized_user_inputs)
+
+    encrypted_quantized_user_inputs_shorten_hex = encrypted_quantized_user_inputs.hex()[
+        :INPUT_BROWSER_LIMIT
+    ]
+
+    return {
+        error_box3: gr.update(visible=False),
+        input_dict_box: gr.update(visible=True, value=user_inputs),
+        enc_vect_box: gr.update(visible=True, value=encrypted_quantized_user_inputs_shorten_hex),
+    }
 
 with gr.Blocks() as demo:
 
@@ -238,6 +286,43 @@ with gr.Blocks() as demo:
         ],
     )
 
+    # # Step 2.2: Encrypt data locally
+    gr.Markdown("### Encrypt the data")
+    encrypt_btn = gr.Button("Encrypt the data using the private secret key")
+    error_box3 = gr.Textbox(label="Error ❌", visible=False)
+
+    with gr.Row():
+        with gr.Column():
+            input_dict_box = gr.Textbox(label="input_dict_box:", max_lines=10)
+        with gr.Column():
+            enc_dict_box = gr.Textbox(label="input_dict_box:", max_lines=10)
+
+    encrypt_btn.click(
+        encrypt_fn,
+        inputs=[out, user_id_box],
+        outputs=[
+            input_dict_box,
+            enc_dict_box,
+            error_box3,
+        ],
+    )
+    # # Step 2.3: Send encrypted data to the server
+    # gr.Markdown(
+    #     "### Send the encrypted data to the <span style='color:grey'>Server Side</span>"
+    # )
+    # error_box4 = gr.Textbox(label="Error ❌", visible=False)
+
+    # with gr.Row().style(equal_height=False):
+    #     with gr.Column(scale=4):
+    #         send_input_btn = gr.Button("Send data")
+    #     with gr.Column(scale=1):
+    #         srv_resp_send_data_box = gr.Checkbox(label="Data Sent", show_label=False)
+
+    # send_input_btn.click(
+    #     send_input_fn,
+    #     inputs=[user_id_box, one_hot_vect],
+    #     outputs=[error_box4, srv_resp_send_data_box],
+    # )
 
     with gr.Row():
         btn = gr.Button("Run")

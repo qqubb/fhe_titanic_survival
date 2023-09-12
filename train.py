@@ -75,25 +75,46 @@ def train(dev_folder="./dev"):
         X_all, y_all, test_size=num_test, random_state=23
     )
 
-    n_estimators = 50
-    max_depth = 4
-    n_bits = 6
-    n_jobs_xgb = 1
-    n_jobs_gridsearch = -1
-    concrete_clf = ConcreteRandomForestClassifier(
-        n_bits=n_bits, n_estimators=n_estimators, max_depth=max_depth, n_jobs=n_jobs_xgb
-    )
-    concrete_clf.fit(X_train, y_train)
-    concrete_predictions = concrete_clf.predict(X_test)
+    # n_estimators = 50
+    # max_depth = 4
+    # n_bits = 6
+    # n_jobs_xgb = 1
+    # n_jobs_gridsearch = -1
 
-    concrete_clf.compile(X_train)
+    # A gridsearch to find the best parameters
+    parameters = {
+        "n_bits": [6, 8, 12, 16],
+        "max_depth": [2, 4, 8, 12, 16],
+        "n_estimators": [10, 30, 50, 100, 150],
+        "n_jobs": [-1],
+    }
+
+ 
+    concrete_clf = ConcreteRandomForestClassifier()
+    # concrete_clf.fit(X_train, y_train)
+    # concrete_predictions = concrete_clf.predict(X_test)
+
+    grid_search = GridSearchCV(concrete_clf, parameters, cv=3, n_jobs=1, scoring="accuracy")
+    grid_search.fit(X_train, y_train)
+
+    # Check the accuracy of the best model
+    print(f"Best score: {grid_search.best_score_}")
+
+    # Check best hyper-parameters
+    print(f"Best parameters: {grid_search.best_params_}")
+
+    # Extract best model
+    best_model = grid_search.best_estimator_
+    assert isinstance(best_model, ConcreteRandomForestClassifier)   
+
+    best_model.compile(X_train)
 
     # Export the final model such that we can reuse it in a client/server environment
 
     # Save the model to be pushed to a server later
     from concrete.ml.deployment import FHEModelDev
 
-    fhe_api = FHEModelDev(dev_folder, concrete_clf)
+    fhe_api = FHEModelDev(dev_folder, best_model)
     fhe_api.save()
 
 
