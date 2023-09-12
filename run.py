@@ -232,9 +232,16 @@ def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
     client.load()
 
     # user_inputs = np.fromstring(user_symptoms[2:-2], dtype=int, sep=".").reshape(1, -1)
-    # quant_user_symptoms = client.model.quantize_input(user_symptoms)
+    # quant_user_symptoms = client.model.quantize_input(user_inputs)
+    
+    user_inputs_df = pd.DataFrame.from_dict(user_inputs)
+    user_inputs_df = encode_age(user_inputs_df)
+    user_inputs_df = encode_fare(user_inputs_df)
 
-    encrypted_quantized_user_symptoms = client.quantize_encrypt_serialize(user_inputs)
+    print("user_inputs to be encrypted =\n", user_inputs_df)
+    
+    encrypted_quantized_user_inputs = client.quantize_encrypt_serialize(user_inputs_df.to_numpy())
+
     assert isinstance(encrypted_quantized_user_inputs, bytes)
     encrypted_input_path = KEYS_DIR / f"{user_id}/encrypted_input"
 
@@ -248,7 +255,7 @@ def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
     return {
         error_box3: gr.update(visible=False),
         input_dict_box: gr.update(visible=True, value=user_inputs),
-        enc_vect_box: gr.update(visible=True, value=encrypted_quantized_user_inputs_shorten_hex),
+        enc_dict_box: gr.update(visible=True, value=encrypted_quantized_user_inputs_shorten_hex),
     }
 
 with gr.Blocks() as demo:
