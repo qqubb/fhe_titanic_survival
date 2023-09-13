@@ -470,83 +470,65 @@ def get_output_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
                 f.write(encrypted_output)
     return {error_box6: gr.update(visible=False), srv_resp_retrieve_data_box: "Data received"}
 
-# def decrypt_fn(
-#     user_id: str, user_symptoms: np.ndarray, *checked_symptoms, threshold: int = 0.5
-# ) -> Dict:
-#     """Dencrypt the data on the `Client Side`.
+def decrypt_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
+    """Dencrypt the data on the `Client Side`.
+    Args:
+        user_id (str): The current user's ID
+        user_inputs (np.ndarray): The user inputs
+    Returns:
+        Decrypted output
+    """
 
-#     Args:
-#         user_id (str): The current user's ID
-#         user_symptoms (np.ndarray): The user symptoms
-#         threshold (float): Probability confidence threshold
+    if is_none(user_id) or is_none(user_inputs):
+        return {
+            error_box7: gr.update(
+                visible=True,
+                value="⚠️ Please check your connectivity \n"
+                "⚠️ Ensure that the client has successfully received the data from the server.",
+            )
+        }
 
-#     Returns:
-#         Decrypted output
-#     """
+    # Get the encrypted output path
+    encrypted_output_path = CLIENT_DIR / f"{user_id}_encrypted_output"
 
-#     if is_none(user_id) or is_none(user_symptoms):
-#         return {
-#             error_box7: gr.update(
-#                 visible=True,
-#                 value="⚠️ Please check your connectivity \n"
-#                 "⚠️ Ensure that the client has successfully received the data from the server.",
-#             )
-#         }
+    if not encrypted_output_path.is_file():
+        print("Error in decryption step: Please run the FHE execution, first.")
+        return {
+            error_box7: gr.update(
+                visible=True,
+                value="⚠️ Please ensure that: \n"
+                "- the connectivity \n"
+                "- the inputs have been submitted \n"
+                "- the evaluation key has been generated \n"
+                "- the server processed the encrypted data \n"
+                "- the Client received the data from the Server before decrypting the prediction",
+            ),
+            decrypt_box: None,
+        }
 
-#     # Get the encrypted output path
-#     encrypted_output_path = CLIENT_DIR / f"{user_id}_encrypted_output"
+    # Load the encrypted output as bytes
+    with encrypted_output_path.open("rb") as f:
+        encrypted_output = f.read()
 
-#     if not encrypted_output_path.is_file():
-#         print("Error in decryption step: Please run the FHE execution, first.")
-#         return {
-#             error_box7: gr.update(
-#                 visible=True,
-#                 value="⚠️ Please ensure that: \n"
-#                 "- the connectivity \n"
-#                 "- the symptoms have been submitted \n"
-#                 "- the evaluation key has been generated \n"
-#                 "- the server processed the encrypted data \n"
-#                 "- the Client received the data from the Server before decrypting the prediction",
-#             ),
-#             decrypt_box: None,
-#         }
+    # Retrieve the client API
+    client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
+    client.load()
 
-#     # Load the encrypted output as bytes
-#     with encrypted_output_path.open("rb") as f:
-#         encrypted_output = f.read()
+    # Deserialize, decrypt and post-process the encrypted output
+    output = client.deserialize_decrypt_dequantize(encrypted_output)
 
-#     # Retrieve the client API
-#     client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
-#     client.load()
+    print("output =\n", output)
 
-#     # Deserialize, decrypt and post-process the encrypted output
-#     output = client.deserialize_decrypt_dequantize(encrypted_output)
+    # top3_diseases = np.argsort(output.flatten())[-3:][::-1]
+    # top3_proba = output[0][top3_diseases]
 
-#     top3_diseases = np.argsort(output.flatten())[-3:][::-1]
-#     top3_proba = output[0][top3_diseases]
+    out = ""
 
-#     out = ""
-
-#     if top3_proba[0] < threshold or abs(top3_proba[0] - top3_proba[1]) < 0.1:
-#         out = (
-#             "⚠️ The prediction appears uncertain; including more symptoms "
-#             "may improve the results.\n\n"
-#         )
-
-#     out = (
-#         f"{out}Given the symptoms you provided: "
-#         f"{pretty_print(checked_symptoms, case_conversion=str.capitalize, delimiter=', ')}\n\n"
-#         "Here are the top3 predictions:\n\n"
-#         f"1. « {get_disease_name(top3_diseases[0])} » with a probability of {top3_proba[0]:.2%}\n"
-#         f"2. « {get_disease_name(top3_diseases[1])} » with a probability of {top3_proba[1]:.2%}\n"
-#         f"3. « {get_disease_name(top3_diseases[2])} » with a probability of {top3_proba[2]:.2%}\n"
-#     )
-
-#     return {
-#         error_box7: gr.update(visible=False),
-#         decrypt_box: out,
-#         submit_btn: gr.update(value="Submit"),
-#     }
+    return {
+        error_box7: gr.update(visible=False),
+        decrypt_box: out,
+        submit_btn: gr.update(value="Submit"),
+    }
 
 with gr.Blocks() as demo:
 
