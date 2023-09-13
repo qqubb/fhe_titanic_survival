@@ -434,6 +434,120 @@ def send_input_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
         srv_resp_send_data_box: "Data sent",
     }
 
+def get_output_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
+    """Retreive the encrypted data from the server.
+    """
+
+    if is_none(user_id) or is_none(user_inputs):
+        return {
+            error_box6: gr.update(
+                visible=True,
+                value="⚠️ Please check your connectivity \n"
+                "⚠️ Ensure that the server has successfully processed and transmitted the data to the client.",
+            )
+        }
+
+    data = {
+        "user_id": user_id,
+    }
+
+    # Retrieve the encrypted output
+    url = SERVER_URL + "get_output"
+    with requests.post(
+        url=url,
+        data=data,
+    ) as response:
+        if response.ok:
+            print(f"Receive Data: {response.ok=}")
+
+            encrypted_output = response.content
+
+            # Save the encrypted output to bytes in a file as it is too large to pass through
+            # regular Gradio buttons (see https://github.com/gradio-app/gradio/issues/1877)
+            encrypted_output_path = CLIENT_DIR / f"{user_id}_encrypted_output"
+
+            with encrypted_output_path.open("wb") as f:
+                f.write(encrypted_output)
+    return {error_box6: gr.update(visible=False), srv_resp_retrieve_data_box: "Data received"}
+
+# def decrypt_fn(
+#     user_id: str, user_symptoms: np.ndarray, *checked_symptoms, threshold: int = 0.5
+# ) -> Dict:
+#     """Dencrypt the data on the `Client Side`.
+
+#     Args:
+#         user_id (str): The current user's ID
+#         user_symptoms (np.ndarray): The user symptoms
+#         threshold (float): Probability confidence threshold
+
+#     Returns:
+#         Decrypted output
+#     """
+
+#     if is_none(user_id) or is_none(user_symptoms):
+#         return {
+#             error_box7: gr.update(
+#                 visible=True,
+#                 value="⚠️ Please check your connectivity \n"
+#                 "⚠️ Ensure that the client has successfully received the data from the server.",
+#             )
+#         }
+
+#     # Get the encrypted output path
+#     encrypted_output_path = CLIENT_DIR / f"{user_id}_encrypted_output"
+
+#     if not encrypted_output_path.is_file():
+#         print("Error in decryption step: Please run the FHE execution, first.")
+#         return {
+#             error_box7: gr.update(
+#                 visible=True,
+#                 value="⚠️ Please ensure that: \n"
+#                 "- the connectivity \n"
+#                 "- the symptoms have been submitted \n"
+#                 "- the evaluation key has been generated \n"
+#                 "- the server processed the encrypted data \n"
+#                 "- the Client received the data from the Server before decrypting the prediction",
+#             ),
+#             decrypt_box: None,
+#         }
+
+#     # Load the encrypted output as bytes
+#     with encrypted_output_path.open("rb") as f:
+#         encrypted_output = f.read()
+
+#     # Retrieve the client API
+#     client = FHEModelClient(path_dir=DEPLOYMENT_DIR, key_dir=KEYS_DIR / f"{user_id}")
+#     client.load()
+
+#     # Deserialize, decrypt and post-process the encrypted output
+#     output = client.deserialize_decrypt_dequantize(encrypted_output)
+
+#     top3_diseases = np.argsort(output.flatten())[-3:][::-1]
+#     top3_proba = output[0][top3_diseases]
+
+#     out = ""
+
+#     if top3_proba[0] < threshold or abs(top3_proba[0] - top3_proba[1]) < 0.1:
+#         out = (
+#             "⚠️ The prediction appears uncertain; including more symptoms "
+#             "may improve the results.\n\n"
+#         )
+
+#     out = (
+#         f"{out}Given the symptoms you provided: "
+#         f"{pretty_print(checked_symptoms, case_conversion=str.capitalize, delimiter=', ')}\n\n"
+#         "Here are the top3 predictions:\n\n"
+#         f"1. « {get_disease_name(top3_diseases[0])} » with a probability of {top3_proba[0]:.2%}\n"
+#         f"2. « {get_disease_name(top3_diseases[1])} » with a probability of {top3_proba[1]:.2%}\n"
+#         f"3. « {get_disease_name(top3_diseases[2])} » with a probability of {top3_proba[2]:.2%}\n"
+#     )
+
+#     return {
+#         error_box7: gr.update(visible=False),
+#         decrypt_box: out,
+#         submit_btn: gr.update(value="Submit"),
+#     }
+
 with gr.Blocks() as demo:
 
     # Step 1.1: Provide inputs
@@ -514,7 +628,6 @@ with gr.Blocks() as demo:
     gr.Markdown("<span style='color:grey'>Server Side</span>")
     gr.Markdown(
         "Once the server receives the encrypted data, it can process and compute the output without ever decrypting the data just as it would on clear data.\n\n"
-        "This server employs a [Logistic Regression](https://github.com/zama-ai/concrete-ml/tree/release/1.1.x/use_case_examples/disease_prediction) model that has been trained on this [data-set](https://github.com/anujdutt9/Disease-Prediction-from-Symptoms/tree/master/dataset)."
     )
 
     run_fhe_btn = gr.Button("Run the FHE evaluation")
@@ -526,7 +639,43 @@ with gr.Blocks() as demo:
         outputs=[fhe_execution_time_box, error_box5],
     )
 
+    # ------------------------- Step 4 -------------------------
+    gr.Markdown("\n")
+    gr.Markdown("## Step 4: Decrypt the data")
+    gr.Markdown("<hr />")
+    gr.Markdown("<span style='color:grey'>Client Side</span>")
+    gr.Markdown(
+        "### Get the encrypted data from the <span style='color:grey'>Server Side</span>"
+    )
 
+    error_box6 = gr.Textbox(label="Error ❌", visible=False)
+
+    # Step 4.1: Data transmission
+    with gr.Row().style(equal_height=True):
+        with gr.Column(scale=4):
+            get_output_btn = gr.Button("Get data")
+        with gr.Column(scale=1):
+            srv_resp_retrieve_data_box = gr.Checkbox(label="Data Received", show_label=False)
+
+    get_output_btn.click(
+        get_output_fn,
+        inputs=[user_id_box, out],
+        outputs=[srv_resp_retrieve_data_box, error_box6],
+    )
+
+    # Step 4.1: Data transmission
+    gr.Markdown("### Decrypt the output")
+    decrypt_btn = gr.Button("Decrypt the output using the private secret key")
+    error_box7 = gr.Textbox(label="Error ❌", visible=False)
+    decrypt_box = gr.Textbox(label="Decrypted Output:")
+
+    decrypt_btn.click(
+        decrypt_fn,
+        inputs=[user_id_box, out],
+        outputs=[decrypt_box, error_box7, submit_btn],
+    )
+
+    # ------------------------- End -------------------------
 
     # with gr.Row():
     #     btn = gr.Button("Run")
