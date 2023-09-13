@@ -166,9 +166,9 @@ def concrete_predict_survival(input_dict):
     pred = concrete_clf.predict_proba(df)[0]
     return {"Perishes": float(pred[0]), "Survives": float(pred[1])}
 
-print("\nclear_test    ", clear_predict_survival({'Pclass': [1], 'Sex': [1], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}))
+print("\nclear_test    ", clear_predict_survival({'Pclass': [1], 'Sex': [0], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}))
 
-print("encrypted_test", concrete_predict_survival({'Pclass': [1], 'Sex': [1], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}),"\n")
+print("encrypted_test", concrete_predict_survival({'Pclass': [1], 'Sex': [0], 'Age': [25], 'Fare': [20.0], 'Embarked': [2], 'Company': [1]}),"\n")
 
 
 def key_gen_fn() -> Dict:
@@ -522,12 +522,13 @@ def decrypt_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
     # top3_diseases = np.argsort(output.flatten())[-3:][::-1]
     # top3_proba = output[0][top3_diseases]
 
-    out = ""
+    out = {"Perishes": float(output[0][0]), "Survives": float(output[0][1])}
+
+    print("output =\n", out)
 
     return {
         error_box7: gr.update(visible=False),
         decrypt_box: out,
-        submit_btn: gr.update(value="Submit"),
     }
 
 with gr.Blocks() as demo:
@@ -654,13 +655,9 @@ with gr.Blocks() as demo:
     decrypt_btn.click(
         decrypt_fn,
         inputs=[user_id_box, out],
-        outputs=[decrypt_box, error_box7, submit_btn],
+        outputs=[decrypt_box, error_box7],
     )
 
     # ------------------------- End -------------------------
-
-    # with gr.Row():
-    #     btn = gr.Button("Run")
-    #     btn.click(fn=concrete_predict_survival, inputs=out, outputs=gr.Label())
 
 demo.launch()
