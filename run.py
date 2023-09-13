@@ -239,6 +239,7 @@ def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
     user_inputs_df = encode_fare(user_inputs_df)
 
     print("user_inputs to be encrypted =\n", user_inputs_df)
+    print("user_inputs to be encrypted =\n", user_inputs_df.to_numpy())
     
     encrypted_quantized_user_inputs = client.quantize_encrypt_serialize(user_inputs_df.to_numpy())
 
@@ -256,6 +257,117 @@ def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
         error_box3: gr.update(visible=False),
         input_dict_box: gr.update(visible=True, value=user_inputs),
         enc_dict_box: gr.update(visible=True, value=encrypted_quantized_user_inputs_shorten_hex),
+    }
+
+def send_input_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
+    """Send the encrypted data and the evaluation key to the server.
+    """
+
+    if is_none(user_id) or is_none(user_inputs):
+        return {
+            error_box4: gr.update(
+                visible=True,
+                value="⚠️ Please check your connectivity \n"
+                "⚠️ Ensure that the symptoms have been submitted and the evaluation "
+                "key has been generated before sending the data to the server.",
+            )
+        }
+
+    evaluation_key_path = KEYS_DIR / f"{user_id}/evaluation_key"
+    encrypted_input_path = KEYS_DIR / f"{user_id}/encrypted_input"
+
+    if not evaluation_key_path.is_file():
+        print(
+            "Error Encountered While Sending Data to the Server: "
+            f"The key has been generated correctly - {evaluation_key_path.is_file()=}"
+        )
+
+        return {
+            error_box4: gr.update(visible=True, value="⚠️ Please generate the private key first.")
+        }
+
+    if not encrypted_input_path.is_file():
+        print(
+            "Error Encountered While Sending Data to the Server: The data has not been encrypted "
+            f"correctly on the client side - {encrypted_input_path.is_file()=}"
+        )
+        return {
+            error_box4: gr.update(
+                visible=True,
+                value="⚠️ Please encrypt the data with the private key first.",
+            ),
+        }
+
+    # Define the data and files to post
+    data = {
+        "user_id": user_id,
+        "input": user_inputs,
+    }
+
+    files = [
+        ("files", open(encrypted_input_path, "rb")),
+        ("files", open(evaluation_key_path, "rb")),
+    ]
+
+    # Send the encrypted input and evaluation key to the server
+    url = SERVER_URL + "send_input"
+    with requests.post(
+        url=url,
+        data=data,
+        files=files,
+    ) as response:
+        print(f"Sending Data: {response.ok=}")
+    return {
+        error_box4: gr.update(visible=False),
+        srv_resp_send_data_box: "Data sent",
+    }
+
+def run_fhe_fn(user_id: str) -> Dict:
+    """Send the encrypted input and the evaluation key to the server.
+
+    Args:
+        user_id (int): The current user's ID.
+    """
+    if is_none(user_id):
+        return {
+            error_box5: gr.update(
+                visible=True,
+                value="⚠️ Please check your connectivity \n"
+                "⚠️ Ensure that the symptoms have been submitted, the evaluation "
+                "key has been generated and the server received the data "
+                "before processing the data.",
+            ),
+            fhe_execution_time_box: None,
+        }
+
+    data = {
+        "user_id": user_id,
+    }
+
+    url = SERVER_URL + "run_fhe"
+
+    with requests.post(
+        url=url,
+        data=data,
+    ) as response:
+        if not response.ok:
+            return {
+                error_box5: gr.update(
+                    visible=True,
+                    value=(
+                        "⚠️ An error occurred on the Server Side. "
+                        "Please check connectivity and data transmission."
+                    ),
+                ),
+                fhe_execution_time_box: gr.update(visible=False),
+            }
+        else:
+            time.sleep(1)
+            print(f"response.ok: {response.ok}, {response.json()} - Computed")
+
+    return {
+        error_box5: gr.update(visible=False),
+        fhe_execution_time_box: gr.update(visible=True, value=f"{response.json():.2f} seconds"),
     }
 
 with gr.Blocks() as demo:
@@ -314,25 +426,46 @@ with gr.Blocks() as demo:
         ],
     )
     # # Step 2.3: Send encrypted data to the server
-    # gr.Markdown(
-    #     "### Send the encrypted data to the <span style='color:grey'>Server Side</span>"
-    # )
-    # error_box4 = gr.Textbox(label="Error ❌", visible=False)
+    gr.Markdown(
+        "### Send the encrypted data to the <span style='color:grey'>Server Side</span>"
+    )
+    error_box4 = gr.Textbox(label="Error ❌", visible=False)
 
-    # with gr.Row().style(equal_height=False):
-    #     with gr.Column(scale=4):
-    #         send_input_btn = gr.Button("Send data")
-    #     with gr.Column(scale=1):
-    #         srv_resp_send_data_box = gr.Checkbox(label="Data Sent", show_label=False)
+    with gr.Row().style(equal_height=False):
+        with gr.Column(scale=4):
+            send_input_btn = gr.Button("Send data")
+        with gr.Column(scale=1):
+            srv_resp_send_data_box = gr.Checkbox(label="Data Sent", show_label=False)
 
-    # send_input_btn.click(
-    #     send_input_fn,
-    #     inputs=[user_id_box, one_hot_vect],
-    #     outputs=[error_box4, srv_resp_send_data_box],
-    # )
+    send_input_btn.click(
+        send_input_fn,
+        inputs=[user_id_box, out],
+        outputs=[error_box4, srv_resp_send_data_box],
+    )
 
-    with gr.Row():
-        btn = gr.Button("Run")
-        btn.click(fn=concrete_predict_survival, inputs=out, outputs=gr.Label())
+    # ------------------------- Step 3 -------------------------
+    gr.Markdown("\n")
+    gr.Markdown("## Step 3: Run the FHE evaluation")
+    gr.Markdown("<hr />")
+    gr.Markdown("<span style='color:grey'>Server Side</span>")
+    gr.Markdown(
+        "Once the server receives the encrypted data, it can process and compute the output without ever decrypting the data just as it would on clear data.\n\n"
+        "This server employs a [Logistic Regression](https://github.com/zama-ai/concrete-ml/tree/release/1.1.x/use_case_examples/disease_prediction) model that has been trained on this [data-set](https://github.com/anujdutt9/Disease-Prediction-from-Symptoms/tree/master/dataset)."
+    )
+
+    run_fhe_btn = gr.Button("Run the FHE evaluation")
+    error_box5 = gr.Textbox(label="Error ❌", visible=False)
+    fhe_execution_time_box = gr.Textbox(label="Total FHE Execution Time:", visible=True)
+    run_fhe_btn.click(
+        run_fhe_fn,
+        inputs=[user_id_box],
+        outputs=[fhe_execution_time_box, error_box5],
+    )
+
+
+
+    # with gr.Row():
+    #     btn = gr.Button("Run")
+    #     btn.click(fn=concrete_predict_survival, inputs=out, outputs=gr.Label())
 
 demo.launch()
