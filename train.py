@@ -64,7 +64,6 @@ def train(dev_folder="./dev"):
         ]
         return df
 
-
     train = encode_df(data)
 
     X_all = train.drop(["Survived", "PassengerId"], axis=1)
@@ -83,18 +82,17 @@ def train(dev_folder="./dev"):
 
     # A gridsearch to find the best parameters
     parameters = {
-        "n_bits": [6, 8, 12, 16],
-        "max_depth": [2, 4, 8, 12, 16],
-        "n_estimators": [10, 30, 50, 100, 150],
+        "n_bits": [6],
+        "max_depth": [4, 8],
+        "n_estimators": [30, 50],
         "n_jobs": [-1],
     }
-
  
     concrete_clf = ConcreteRandomForestClassifier()
     # concrete_clf.fit(X_train, y_train)
     # concrete_predictions = concrete_clf.predict(X_test)
 
-    grid_search = GridSearchCV(concrete_clf, parameters, cv=3, n_jobs=1, scoring="accuracy")
+    grid_search = GridSearchCV(concrete_clf, parameters, cv=3, n_jobs=-1, scoring="accuracy")
     grid_search.fit(X_train, y_train)
 
     # Check the accuracy of the best model

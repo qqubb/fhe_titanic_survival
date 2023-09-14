@@ -240,7 +240,6 @@ def encrypt_fn(user_inputs: np.ndarray, user_id: str) -> None:
 
     print("user_inputs to be encrypted =\n", user_inputs_df)
     print("user_inputs to be encrypted =\n", user_inputs_df.to_numpy())
-    print("user_inputs to be encrypted =\n", user_inputs_df.to_numpy())
     
     encrypted_quantized_user_inputs = client.quantize_encrypt_serialize(user_inputs_df.to_numpy())
 
@@ -529,6 +528,7 @@ def decrypt_fn(user_id: str, user_inputs: np.ndarray) -> Dict:
     return {
         error_box7: gr.update(visible=False),
         decrypt_box: out,
+        label: out,
     }
 
 with gr.Blocks() as demo:
@@ -651,11 +651,12 @@ with gr.Blocks() as demo:
     decrypt_btn = gr.Button("Decrypt the output using the private secret key")
     error_box7 = gr.Textbox(label="Error ❌", visible=False)
     decrypt_box = gr.Textbox(label="Decrypted Output:")
+    label = gr.Label()
 
     decrypt_btn.click(
         decrypt_fn,
         inputs=[user_id_box, out],
-        outputs=[decrypt_box, error_box7],
+        outputs=[decrypt_box, error_box7, label],
     )
 
     # ------------------------- End -------------------------
